@@ -65,8 +65,6 @@ router.get('/profile', verifyToken, async (req, res) => {
     res.status(500).json({ message: 'Server Error' });
   }
 });
-
-// 4. Update Profile (Protected)
 router.post('/update-profile', verifyToken, async (req, res) => {
   const { name, avatar, gender, address, age } = req.body;
   
@@ -96,8 +94,6 @@ router.post('/update-profile', verifyToken, async (req, res) => {
     res.status(500).json({ message: 'Server Error' });
   }
 });
-
-// 4. Change Password (Protected)
 router.post('/change-password', verifyToken, async (req, res) => {
   const { oldPassword, newPassword } = req.body;
   if (!oldPassword || !newPassword) return res.status(400).json({ message: 'Old and new passwords are required' });

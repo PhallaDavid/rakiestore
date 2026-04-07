@@ -27,6 +27,30 @@ async function migrate() {
       )
     `;
     await pool.query(createBrandsTableQuery);
+
+    const createCategoriesTableQuery = `
+      CREATE TABLE IF NOT EXISTS categories (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        description TEXT NULL,
+        avatar VARCHAR(255) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+    await pool.query(createCategoriesTableQuery);
+
+    const createSubcategoriesTableQuery = `
+      CREATE TABLE IF NOT EXISTS subcategories (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        category_id INT NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        description TEXT NULL,
+        avatar VARCHAR(255) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+      )
+    `;
+    await pool.query(createSubcategoriesTableQuery);
     
     console.log('✅ Success: All tables migrated successfully!');
   } catch (error) {
