@@ -8,9 +8,11 @@ import productRoute from './routes/products.js';
 import cartRoute from './routes/cart.js';
 import favRoute from './routes/favourites.js';
 import orderRoute from './routes/orders.js';
+import cors from './middleware/cors.js';
 
 dotenv.config();
 const app = express();
+app.use(cors());
 app.use(express.json());
 
 // Public static folder for uploaded image avatars
