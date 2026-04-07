@@ -56,10 +56,41 @@ router.post('/login', async (req, res) => {
 // 3. Get Profile (Protected)
 router.get('/profile', verifyToken, async (req, res) => {
   try {
-    const [users] = await pool.query('SELECT id, phone, created_at FROM users WHERE id = ?', [req.user.id]);
+    const [users] = await pool.query('SELECT id, phone, name, avatar, gender, address, age, created_at FROM users WHERE id = ?', [req.user.id]);
     if (users.length === 0) return res.status(404).json({ message: 'User not found' });
     
     res.json({ profile: users[0] });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// 4. Update Profile (Protected)
+router.post('/update-profile', verifyToken, async (req, res) => {
+  const { name, avatar, gender, address, age } = req.body;
+  
+  try {
+    const updateQuery = `
+      UPDATE users 
+      SET name = COALESCE(?, name), 
+          avatar = COALESCE(?, avatar), 
+          gender = COALESCE(?, gender), 
+          address = COALESCE(?, address), 
+          age = COALESCE(?, age)
+      WHERE id = ?
+    `;
+    
+    await pool.query(updateQuery, [
+      name !== undefined ? name : null, 
+      avatar !== undefined ? avatar : null, 
+      gender !== undefined ? gender : null, 
+      address !== undefined ? address : null, 
+      age !== undefined ? age : null, 
+      req.user.id
+    ]);
+    
+    res.json({ message: 'Profile updated successfully' });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ message: 'Server Error' });

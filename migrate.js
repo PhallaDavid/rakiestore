@@ -7,6 +7,11 @@ async function migrate() {
         id INT AUTO_INCREMENT PRIMARY KEY,
         phone VARCHAR(100) UNIQUE NOT NULL,
         password VARCHAR(255) NOT NULL,
+        name VARCHAR(255) NULL,
+        avatar TEXT NULL,
+        gender VARCHAR(50) NULL,
+        address TEXT NULL,
+        age INT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `;
