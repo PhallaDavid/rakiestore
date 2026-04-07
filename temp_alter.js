@@ -2,22 +2,19 @@ import pool from './db.js';
 
 async function alterDB() {
   try {
-    console.log('Adding new columns to table...');
+    console.log('Creating brands table...');
     await pool.query(`
-      ALTER TABLE users 
-      ADD COLUMN name VARCHAR(255) NULL, 
-      ADD COLUMN avatar TEXT NULL, 
-      ADD COLUMN gender VARCHAR(50) NULL, 
-      ADD COLUMN address TEXT NULL, 
-      ADD COLUMN age INT NULL
+      CREATE TABLE IF NOT EXISTS brands (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        description TEXT NULL,
+        avatar VARCHAR(255) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
     `);
-    console.log('✅ Successfully added profile columns!');
+    console.log('✅ Successfully created brands table!');
   } catch (err) {
-    if (err.code === 'ER_DUP_FIELDNAME') {
-      console.log('✅ Columns already exist.');
-    } else {
-      console.error('❌ Could not alter table:', err.message);
-    }
+    console.error('❌ Could not create brands table:', err.message);
   } finally {
     process.exit();
   }

@@ -15,9 +15,20 @@ async function migrate() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `;
-    
     await pool.query(createUsersTableQuery);
-    console.log('✅ Success: "users" table created (or already exists)!');
+
+    const createBrandsTableQuery = `
+      CREATE TABLE IF NOT EXISTS brands (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        description TEXT NULL,
+        avatar VARCHAR(255) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+    await pool.query(createBrandsTableQuery);
+    
+    console.log('✅ Success: All tables migrated successfully!');
   } catch (error) {
     console.error('❌ Error creating table:', error);
   } finally {

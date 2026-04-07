@@ -2,13 +2,18 @@ import express from 'express';
 import dotenv from 'dotenv';
 import pool from './db.js';
 import authRoute from './routes/auth.js';
+import brandsRoute from './routes/brands.js';
 
 dotenv.config();
 const app = express();
 app.use(express.json());
 
-// Auth routes
+// Public static folder for uploaded image avatars
+app.use('/uploads', express.static('uploads'));
+
+// API routes
 app.use('/auth', authRoute);
+app.use('/brands', brandsRoute);
 app.get('/', async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT NOW() AS now');
