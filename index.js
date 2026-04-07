@@ -5,6 +5,8 @@ import authRoute from './routes/auth.js';
 import brandsRoute from './routes/brands.js';
 import categoryRoute from './routes/categories.js';
 import productRoute from './routes/products.js';
+import cartRoute from './routes/cart.js';
+import favRoute from './routes/favourites.js';
 
 dotenv.config();
 const app = express();
@@ -18,6 +20,8 @@ app.use('/auth', authRoute);
 app.use('/brands', brandsRoute);
 app.use('/categories', categoryRoute);
 app.use('/products', productRoute);
+app.use('/cart', cartRoute);
+app.use('/favorites', favRoute);
 app.get('/', async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT NOW() AS now');

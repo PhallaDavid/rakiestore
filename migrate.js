@@ -104,6 +104,32 @@ async function migrate() {
       )
     `;
     await pool.query(createProductImagesTableQuery);
+
+    const createCartTableQuery = `
+      CREATE TABLE IF NOT EXISTS cart_items (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        variant_id INT NOT NULL,
+        quantity INT NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (variant_id) REFERENCES product_variants(id) ON DELETE CASCADE
+      )
+    `;
+    await pool.query(createCartTableQuery);
+
+    const createFavoritesTableQuery = `
+      CREATE TABLE IF NOT EXISTS favorites (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        product_id INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY user_product (user_id, product_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+      )
+    `;
+    await pool.query(createFavoritesTableQuery);
     
     console.log('✅ Success: All tables migrated successfully!');
   } catch (error) {
