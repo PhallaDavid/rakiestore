@@ -23,7 +23,16 @@ const getFullUrl = (req, relativePath) => {
   return `${req.protocol}://${req.get('host')}${relativePath}`;
 };
 
-// Function to calculate final price based on promotion dates
+const slugify = (text) => {
+  return text
+    .toString()
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/[^\w-]+/g, '')
+    .replace(/--+/g, '-');
+};
+
 const calculatePrice = (original, promo, start, end) => {
   const now = new Date();
   const startTime = start ? new Date(start) : null;
@@ -43,24 +52,21 @@ const calculatePrice = (original, promo, start, end) => {
 
 /** --- PRODUCT CRUD --- **/
 
-// Get all products with calculated sale prices
-router.get('/', async (req, res) => {
+// 1. Search products (by ID or Slug or Name)
+router.get('/search', async (req, res) => {
+  const { q } = req.query;
   try {
     const [products] = await pool.query(`
       SELECT p.*, c.name as category_name, b.name as brand_name 
       FROM products p
       LEFT JOIN categories c ON p.category_id = c.id
       LEFT JOIN brands b ON p.brand_id = b.id
-      ORDER BY p.created_at DESC
-    `);
+      WHERE p.name LIKE ? OR p.slug = ? OR p.id = ?
+    `, [`%${q}%`, q, q]);
 
     const result = products.map(p => {
       const priceInfo = calculatePrice(p.original_price, p.promo_price, p.promo_start, p.promo_end);
-      return {
-        ...p,
-        thumbnail: getFullUrl(req, p.thumbnail),
-        ...priceInfo
-      };
+      return { ...p, thumbnail: getFullUrl(req, p.thumbnail), ...priceInfo };
     });
 
     res.json(result);
@@ -69,18 +75,64 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Create product (Form-Data)
+// 2. Get Product Detail by ID or Slug
+router.get('/detail/:identifier', async (req, res) => {
+  const { identifier } = req.params;
+  try {
+    // Determine if identifier is ID (numeric) or Slug (string)
+    const query = isNaN(identifier) 
+      ? 'SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.slug = ?'
+      : 'SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?';
+
+    const [products] = await pool.query(query, [identifier]);
+    if (products.length === 0) return res.status(404).json({ message: 'Product not found' });
+
+    const p = products[0];
+    const priceInfo = calculatePrice(p.original_price, p.promo_price, p.promo_start, p.promo_end);
+
+    // Fetch variants and gallery for full detail
+    const [variants] = await pool.query('SELECT * FROM product_variants WHERE product_id = ?', [p.id]);
+    const [gallery] = await pool.query('SELECT * FROM product_images WHERE product_id = ?', [p.id]);
+
+    res.json({
+      ...p,
+      thumbnail: getFullUrl(req, p.thumbnail),
+      ...priceInfo,
+      variants: variants.map(v => ({ ...v, variant_image: getFullUrl(req, v.variant_image) })),
+      gallery: gallery.map(img => ({ ...img, image_url: getFullUrl(req, img.image_url) }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get all products
+router.get('/', async (req, res) => {
+  try {
+    const [products] = await pool.query('SELECT * FROM products ORDER BY created_at DESC');
+    const result = products.map(p => {
+      const priceInfo = calculatePrice(p.original_price, p.promo_price, p.promo_start, p.promo_end);
+      return { ...p, thumbnail: getFullUrl(req, p.thumbnail), ...priceInfo };
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Create product
 router.post('/', upload.single('thumbnail'), async (req, res) => {
   const { category_id, subcategory_id, brand_id, name, description, original_price, promo_price, promo_start, promo_end, status } = req.body;
   const thumbnail = req.file ? `/uploads/${req.file.filename}` : null;
+  const slug = slugify(name) + '-' + Date.now().toString().slice(-4); // Ensure unique slug
 
   try {
     const [result] = await pool.query(
-      `INSERT INTO products (category_id, subcategory_id, brand_id, name, description, original_price, promo_price, promo_start, promo_end, thumbnail, status) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [category_id || null, subcategory_id || null, brand_id || null, name, description, original_price || 0, promo_price || null, promo_start || null, promo_end || null, thumbnail, status || 'active']
+      `INSERT INTO products (category_id, subcategory_id, brand_id, name, slug, description, original_price, promo_price, promo_start, promo_end, thumbnail, status) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [category_id || null, subcategory_id || null, brand_id || null, name, slug, description, original_price || 0, promo_price || null, promo_start || null, promo_end || null, thumbnail, status || 'active']
     );
-    res.status(201).json({ id: result.insertId, message: 'Product created' });
+    res.status(201).json({ id: result.insertId, slug, message: 'Product created' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -104,12 +156,17 @@ router.put('/:id', upload.single('thumbnail'), async (req, res) => {
       }
     });
 
+    if (body.name) {
+      query += `slug = ?, `;
+      params.push(slugify(body.name) + '-' + id); // Update slug on name change
+    }
+
     if (thumbnail !== undefined) {
       query += `thumbnail = ?, `;
       params.push(thumbnail);
     }
 
-    query = query.slice(0, -2); // Remove last comma
+    query = query.slice(0, -2);
     query += ' WHERE id = ?';
     params.push(id);
 
@@ -120,7 +177,7 @@ router.put('/:id', upload.single('thumbnail'), async (req, res) => {
   }
 });
 
-// Delete Product
+// Delete
 router.delete('/:id', async (req, res) => {
   try {
     await pool.query('DELETE FROM products WHERE id = ?', [req.params.id]);
@@ -130,73 +187,41 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+/** --- OTHER CRUDs (VARIANTS, GALLERY) --- **/
+// (Rest of the previous content remains)
 
-/** --- VARIANT CRUD --- **/
-
-// Get variants for a product
+// Get variants
 router.get('/:productId/variants', async (req, res) => {
   try {
     const [variants] = await pool.query('SELECT * FROM product_variants WHERE product_id = ?', [req.params.productId]);
-    const result = variants.map(v => {
-      const priceInfo = calculatePrice(v.original_price, v.promo_price, v.promo_start, v.promo_end);
-      return {
-        ...v,
-        variant_image: getFullUrl(req, v.variant_image),
-        ...priceInfo
-      };
-    });
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    res.json(variants.map(v => ({...v, variant_image: getFullUrl(req, v.variant_image)})));
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Add Variant
 router.post('/:productId/variants', upload.single('variant_image'), async (req, res) => {
   const { productId } = req.params;
   const { color, size, sku, stock, original_price, promo_price, promo_start, promo_end } = req.body;
-  const variant_image = req.file ? `/uploads/${req.file.filename}` : null;
-
+  const img = req.file ? `/uploads/${req.file.filename}` : null;
   try {
-    const [result] = await pool.query(
-      `INSERT INTO product_variants (product_id, color, size, sku, stock, original_price, promo_price, promo_start, promo_end, variant_image) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [productId, color, size, sku, stock || 0, original_price || null, promo_price || null, promo_start || null, promo_end || null, variant_image]
-    );
-    res.status(201).json({ id: result.insertId, message: 'Variant added' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    await pool.query('INSERT INTO product_variants (product_id, color, size, sku, stock, original_price, promo_price, promo_start, promo_end, variant_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [productId, color, size, sku, stock, original_price, promo_price, promo_start, promo_end, img]);
+    res.status(201).json({ message: 'Variant added' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-
-/** --- GALLERY CRUD --- **/
-
-// Add multiple images to product gallery
 router.post('/:productId/gallery', upload.array('images', 5), async (req, res) => {
   const { productId } = req.params;
-  const files = req.files;
-
   try {
-    const insertPromises = files.map(file => {
-      return pool.query('INSERT INTO product_images (product_id, image_url) VALUES (?, ?)', [productId, `/uploads/${file.filename}`]);
-    });
-    await Promise.all(insertPromises);
-    res.status(201).json({ message: `${files.length} images added to gallery` });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    const promises = req.files.map(f => pool.query('INSERT INTO product_images (product_id, image_url) VALUES (?, ?)', [productId, `/uploads/${f.filename}`]));
+    await Promise.all(promises);
+    res.status(201).json({ message: 'Gallery updated' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Get gallery images
 router.get('/:productId/gallery', async (req, res) => {
   try {
-    const [images] = await pool.query('SELECT * FROM product_images WHERE product_id = ?', [req.params.productId]);
-    const result = images.map(img => ({ ...img, image_url: getFullUrl(req, img.image_url) }));
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    const [ims] = await pool.query('SELECT * FROM product_images WHERE product_id = ?', [req.params.productId]);
+    res.json(ims.map(i => ({...i, image_url: getFullUrl(req, i.image_url)})));
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 export default router;

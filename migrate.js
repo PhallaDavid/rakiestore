@@ -59,6 +59,7 @@ async function migrate() {
         subcategory_id INT NULL,
         brand_id INT NULL,
         name VARCHAR(255) NOT NULL,
+        slug VARCHAR(255) UNIQUE NULL,
         description TEXT NULL,
         original_price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
         promo_price DECIMAL(10,2) NULL,
