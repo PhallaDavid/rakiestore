@@ -4,6 +4,7 @@ import pool from './db.js';
 import authRoute from './routes/auth.js';
 import brandsRoute from './routes/brands.js';
 import categoryRoute from './routes/categories.js';
+import productRoute from './routes/products.js';
 
 dotenv.config();
 const app = express();
@@ -16,6 +17,7 @@ app.use('/uploads', express.static('uploads'));
 app.use('/auth', authRoute);
 app.use('/brands', brandsRoute);
 app.use('/categories', categoryRoute);
+app.use('/products', productRoute);
 app.get('/', async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT NOW() AS now');
