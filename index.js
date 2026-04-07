@@ -10,8 +10,13 @@ app.use(express.json());
 // Auth routes
 app.use('/auth', authRoute);
 app.get('/', async (req, res) => {
-  const [rows] = await pool.query('SELECT NOW() AS now');
-  res.json(rows);
+  try {
+    const [rows] = await pool.query('SELECT NOW() AS now');
+    res.json(rows);
+  } catch (err) {
+    console.error('DB Connection Error:', err.message);
+    res.status(500).json({ error: 'Failed to connect to the Database!' });
+  }
 });
 
 // Test API to show a message
