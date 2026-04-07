@@ -160,6 +160,18 @@ async function migrate() {
       )
     `;
     await pool.query(createOrderItemsTableQuery);
+
+    const createBannersTableQuery = `
+      CREATE TABLE IF NOT EXISTS banners (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        description TEXT NULL,
+        image VARCHAR(255) NULL,
+        status ENUM('active', 'inactive') DEFAULT 'active',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+    await pool.query(createBannersTableQuery);
     
     console.log('✅ Success: All tables migrated successfully!');
   } catch (error) {
