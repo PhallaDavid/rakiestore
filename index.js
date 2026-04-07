@@ -21,7 +21,7 @@ app.get('/', async (req, res) => {
 
 // Test API to show a message
 app.get('/test', (req, res) => {
-  res.json({ message: 'Hello, this is a test message!' });
+  res.json({ message: 'Hello, dsadthis is a test message!' });
 });
 
 const PORT = process.env.PORT || 3000;
