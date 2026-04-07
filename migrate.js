@@ -130,6 +130,36 @@ async function migrate() {
       )
     `;
     await pool.query(createFavoritesTableQuery);
+
+    const createOrderTableQuery = `
+      CREATE TABLE IF NOT EXISTS orders (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        total_price DECIMAL(10,2) NOT NULL,
+        address TEXT NOT NULL,
+        payment_method VARCHAR(100) NOT NULL,
+        phone VARCHAR(50) NULL,
+        note TEXT NULL,
+        status ENUM('pending', 'paid', 'shipped', 'delivered', 'cancelled') DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `;
+    await pool.query(createOrderTableQuery);
+
+    const createOrderItemsTableQuery = `
+      CREATE TABLE IF NOT EXISTS order_items (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        order_id INT NOT NULL,
+        variant_id INT NOT NULL,
+        quantity INT NOT NULL,
+        price_at_purchase DECIMAL(10,2) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+        FOREIGN KEY (variant_id) REFERENCES product_variants(id) ON DELETE CASCADE
+      )
+    `;
+    await pool.query(createOrderItemsTableQuery);
     
     console.log('✅ Success: All tables migrated successfully!');
   } catch (error) {

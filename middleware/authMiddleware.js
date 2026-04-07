@@ -4,7 +4,7 @@ export const verifyToken = (req, res, next) => {
   const token = req.header('Authorization');
 
   if (!token) {
-    return res.status(401).json({ message: 'Access Denied. No token provided.' });
+    return res.status(401).json({ message: 'Authentication required, please login.' });
   }
 
   try {
