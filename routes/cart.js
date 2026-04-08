@@ -15,10 +15,20 @@ const getFullUrl = (req, relativePath) => {
 router.get('/', verifyToken, async (req, res) => {
   try {
     const [cart] = await pool.query(`
-      SELECT c.*, v.product_id, v.color, v.size, v.sku, v.original_price, v.promo_price, v.promo_start, v.promo_end, p.name, p.thumbnail
+      SELECT 
+        c.*, 
+        p.name, 
+        p.thumbnail,
+        v.color, 
+        v.size, 
+        v.sku, 
+        COALESCE(v.original_price, p.original_price) as original_price,
+        COALESCE(v.promo_price, p.promo_price) as promo_price,
+        COALESCE(v.promo_start, p.promo_start) as promo_start,
+        COALESCE(v.promo_end, p.promo_end) as promo_end
       FROM cart_items c
-      JOIN product_variants v ON c.variant_id = v.id
-      JOIN products p ON v.product_id = p.id
+      JOIN products p ON c.product_id = p.id
+      LEFT JOIN product_variants v ON c.variant_id = v.id
       WHERE c.user_id = ?
     `, [req.user.id]);
 
@@ -30,18 +40,29 @@ router.get('/', verifyToken, async (req, res) => {
   }
 });
 
-// 2. Add to Cart (Requires variant_id and quantity)
+// 2. Add to Cart (Requires product_id, optional variant_id and quantity)
 router.post('/add', verifyToken, async (req, res) => {
-  const { variant_id, quantity } = req.body;
+  const { product_id, variant_id, quantity } = req.body;
   const qty = quantity || 1;
 
-  try {
-    // Check if variant exists
-    const [variants] = await pool.query('SELECT * FROM product_variants WHERE id = ?', [variant_id]);
-    if (variants.length === 0) return res.status(404).json({ message: 'Product variant not found' });
+  if (!product_id) return res.status(400).json({ message: 'product_id is required' });
 
-    // Check if already in cart
-    const [existing] = await pool.query('SELECT * FROM cart_items WHERE user_id = ? AND variant_id = ?', [req.user.id, variant_id]);
+  try {
+    // Check if product exists
+    const [products] = await pool.query('SELECT * FROM products WHERE id = ?', [product_id]);
+    if (products.length === 0) return res.status(404).json({ message: 'Product not found' });
+
+    // If variant is provided, check if it exists and belongs to the product
+    if (variant_id) {
+      const [variants] = await pool.query('SELECT * FROM product_variants WHERE id = ? AND product_id = ?', [variant_id, product_id]);
+      if (variants.length === 0) return res.status(404).json({ message: 'Product variant not found' });
+    }
+
+    // Check if already in cart (match both product_id and variant_id)
+    const [existing] = await pool.query(
+      'SELECT * FROM cart_items WHERE user_id = ? AND product_id = ? AND (variant_id = ? OR (variant_id IS NULL AND ? IS NULL))',
+      [req.user.id, product_id, variant_id, variant_id]
+    );
     
     if (existing.length > 0) {
       // Update quantity if exists
@@ -49,7 +70,10 @@ router.post('/add', verifyToken, async (req, res) => {
       res.json({ message: 'Cart updated' });
     } else {
       // Insert new
-      await pool.query('INSERT INTO cart_items (user_id, variant_id, quantity) VALUES (?, ?, ?)', [req.user.id, variant_id, qty]);
+      await pool.query(
+        'INSERT INTO cart_items (user_id, product_id, variant_id, quantity) VALUES (?, ?, ?, ?)',
+        [req.user.id, product_id, variant_id || null, qty]
+      );
       res.status(201).json({ message: 'Added to cart' });
     }
   } catch (err) {

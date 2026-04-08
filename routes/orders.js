@@ -30,10 +30,13 @@ router.post('/checkout', verifyToken, async (req, res) => {
 
     // 1. Get user cart items
     const [cartItems] = await connection.query(`
-      SELECT c.*, v.original_price, v.promo_price, v.promo_start, v.promo_end, p.original_price as p_orig, p.promo_price as p_promo, p.promo_start as p_start, p.promo_end as p_end
+      SELECT 
+        c.*, 
+        p.original_price as p_orig, p.promo_price as p_promo, p.promo_start as p_start, p.promo_end as p_end,
+        v.original_price as v_orig, v.promo_price as v_promo, v.promo_start as v_start, v.promo_end as v_end
       FROM cart_items c
-      JOIN product_variants v ON c.variant_id = v.id
-      JOIN products p ON v.product_id = p.id
+      JOIN products p ON c.product_id = p.id
+      LEFT JOIN product_variants v ON c.variant_id = v.id
       WHERE c.user_id = ?
     `, [req.user.id]);
 
@@ -45,15 +48,15 @@ router.post('/checkout', verifyToken, async (req, res) => {
     let totalPrice = 0;
     const orderItemsToInsert = cartItems.map(item => {
       // Logic: If variant has its own price, use that. Otherwise use product base price.
-      const orig = item.original_price || item.p_orig;
-      const promo = item.promo_price || item.p_promo;
-      const start = item.promo_start || item.p_start;
-      const end = item.promo_end || item.p_end;
+      const orig = item.v_orig || item.p_orig;
+      const promo = item.v_promo || item.p_promo;
+      const start = item.v_start || item.p_start;
+      const end = item.v_end || item.p_end;
 
       const price = calculatePrice(orig, promo, start, end);
       totalPrice += price * item.quantity;
 
-      return [null, null, item.variant_id, item.quantity, price]; // [item_id, order_id, variant_id, qty, price]
+      return [null, null, item.product_id, item.variant_id || null, item.quantity, price]; // [item_primary_id, order_id, product_id, variant_id, qty, price]
     });
 
     // 3. Create the Order
@@ -69,7 +72,7 @@ router.post('/checkout', verifyToken, async (req, res) => {
         return item.slice(1); // remove the null id
     });
     
-    await connection.query('INSERT INTO order_items (order_id, variant_id, quantity, price_at_purchase) VALUES ?', [finalOrderItems]);
+    await connection.query('INSERT INTO order_items (order_id, product_id, variant_id, quantity, price_at_purchase) VALUES ?', [finalOrderItems]);
 
     // 5. Clear Cart
     await connection.query('DELETE FROM cart_items WHERE user_id = ?', [req.user.id]);
@@ -103,10 +106,15 @@ router.get('/:id', verifyToken, async (req, res) => {
     if (orders.length === 0) return res.status(404).json({ message: 'Order not found' });
 
     const [items] = await pool.query(`
-      SELECT oi.*, v.color, v.size, p.name, p.thumbnail
+      SELECT 
+        oi.*, 
+        p.name, 
+        p.thumbnail,
+        v.color, 
+        v.size
       FROM order_items oi
-      JOIN product_variants v ON oi.variant_id = v.id
-      JOIN products p ON v.product_id = p.id
+      JOIN products p ON oi.product_id = p.id
+      LEFT JOIN product_variants v ON oi.variant_id = v.id
       WHERE oi.order_id = ?
     `, [req.params.id]);
 

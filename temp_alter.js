@@ -1,44 +1,32 @@
 import pool from './db.js';
 
-async function migrate() {
+async function alterTables() {
   try {
-    console.log('Creating orders and order_items tables...');
-    
-    // 1. Create orders table
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS orders (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id INT NOT NULL,
-        total_price DECIMAL(10,2) NOT NULL,
-        address TEXT NOT NULL,
-        payment_method VARCHAR(100) NOT NULL,
-        phone VARCHAR(50) NULL,
-        note TEXT NULL,
-        status ENUM('pending', 'paid', 'shipped', 'delivered', 'cancelled') DEFAULT 'pending',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-      )
-    `);
+    // 1. Alter cart_items
+    console.log('Altering cart_items...');
+    await pool.query('ALTER TABLE cart_items MODIFY variant_id INT NULL');
+    // Check if product_id exists first
+    const [cartCols] = await pool.query("SHOW COLUMNS FROM cart_items LIKE 'product_id'");
+    if (cartCols.length === 0) {
+      await pool.query('ALTER TABLE cart_items ADD COLUMN product_id INT NOT NULL AFTER user_id');
+      await pool.query('ALTER TABLE cart_items ADD CONSTRAINT fk_cart_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE');
+    }
 
-    // 2. Create order_items table (Snapshot of items at purchase)
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS order_items (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        order_id INT NOT NULL,
-        variant_id INT NOT NULL,
-        quantity INT NOT NULL,
-        price_at_purchase DECIMAL(10,2) NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
-        FOREIGN KEY (variant_id) REFERENCES product_variants(id) ON DELETE CASCADE
-      )
-    `);
+    // 2. Alter order_items
+    console.log('Altering order_items...');
+    await pool.query('ALTER TABLE order_items MODIFY variant_id INT NULL');
+    const [orderCols] = await pool.query("SHOW COLUMNS FROM order_items LIKE 'product_id'");
+    if (orderCols.length === 0) {
+      await pool.query('ALTER TABLE order_items ADD COLUMN product_id INT NOT NULL AFTER order_id');
+      await pool.query('ALTER TABLE order_items ADD CONSTRAINT fk_order_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE');
+    }
 
-    console.log('✅ Successfully created orders and order_items tables!');
+    console.log('✅ Success: Tables altered successfully!');
   } catch (err) {
-    console.error('❌ Could not create tables:', err.message);
+    console.error('❌ Error altering tables:', err.message);
   } finally {
     process.exit();
   }
 }
-migrate();
+
+alterTables();
