@@ -4,11 +4,33 @@ import { upload } from '../config/cloudinary.js';
 
 const router = express.Router();
 
-// 1. Get all brands
+// 1. Get all brands with pagination
 router.get('/', async (req, res) => {
   try {
-    const [brands] = await pool.query('SELECT * FROM brands ORDER BY created_at DESC');
-    res.json(brands);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 12;
+    const offset = (page - 1) * limit;
+
+    // Get total count
+    const [countRows] = await pool.query('SELECT COUNT(*) as total FROM brands');
+    const totalItems = countRows[0].total;
+    const totalPages = Math.ceil(totalItems / limit);
+
+    // Get paginated data
+    const [brands] = await pool.query(
+      'SELECT * FROM brands ORDER BY created_at DESC LIMIT ? OFFSET ?',
+      [limit, offset]
+    );
+
+    res.json({
+      data: brands,
+      pagination: {
+        totalItems,
+        totalPages,
+        currentPage: page,
+        itemsPerPage: limit
+      }
+    });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ message: 'Server Error' });

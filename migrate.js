@@ -172,6 +172,18 @@ async function migrate() {
       )
     `;
     await pool.query(createBannersTableQuery);
+
+    const createPostersTableQuery = `
+      CREATE TABLE IF NOT EXISTS posters (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        description TEXT NULL,
+        image VARCHAR(255) NULL,
+        status ENUM('active', 'inactive') DEFAULT 'active',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+    await pool.query(createPostersTableQuery);
     
     console.log('✅ Success: All tables migrated successfully!');
   } catch (error) {

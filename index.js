@@ -9,6 +9,7 @@ import cartRoute from './routes/cart.js';
 import favRoute from './routes/favourites.js';
 import orderRoute from './routes/orders.js';
 import bannerRoute from './routes/banners.js';
+import posterRoute from './routes/posters.js';
 import cors from './middleware/cors.js';
 
 dotenv.config();
@@ -25,6 +26,7 @@ app.use('/cart', cartRoute);
 app.use('/favorites', favRoute);
 app.use('/orders', orderRoute);
 app.use('/banners', bannerRoute);
+app.use('/posters', posterRoute);
 app.get('/', async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT NOW() AS now');

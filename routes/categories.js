@@ -6,11 +6,33 @@ const router = express.Router();
 
 // --- CATEGORY CRUD ---
 
-// Get all categories
+// Get all categories with pagination
 router.get('/', async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM categories ORDER BY created_at DESC');
-    res.json(rows);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 12;
+    const offset = (page - 1) * limit;
+
+    // Get total count
+    const [countRows] = await pool.query('SELECT COUNT(*) as total FROM categories');
+    const totalItems = countRows[0].total;
+    const totalPages = Math.ceil(totalItems / limit);
+
+    // Get paginated data
+    const [categories] = await pool.query(
+      'SELECT * FROM categories ORDER BY created_at DESC LIMIT ? OFFSET ?',
+      [limit, offset]
+    );
+
+    res.json({
+      data: categories,
+      pagination: {
+        totalItems,
+        totalPages,
+        currentPage: page,
+        itemsPerPage: limit
+      }
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

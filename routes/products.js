@@ -87,15 +87,38 @@ router.get('/detail/:identifier', async (req, res) => {
   }
 });
 
-// Get all products
+// Get all products with pagination
 router.get('/', async (req, res) => {
   try {
-    const [products] = await pool.query('SELECT * FROM products ORDER BY created_at DESC');
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 12;
+    const offset = (page - 1) * limit;
+
+    // Get total count
+    const [countRows] = await pool.query('SELECT COUNT(*) as total FROM products');
+    const totalItems = countRows[0].total;
+    const totalPages = Math.ceil(totalItems / limit);
+
+    // Get paginated data
+    const [products] = await pool.query(
+      'SELECT * FROM products ORDER BY created_at DESC LIMIT ? OFFSET ?',
+      [limit, offset]
+    );
+
     const result = products.map(p => {
       const priceInfo = calculatePrice(p.original_price, p.promo_price, p.promo_start, p.promo_end);
       return { ...p, thumbnail: p.thumbnail, ...priceInfo };
     });
-    res.json(result);
+
+    res.json({
+      data: result,
+      pagination: {
+        totalItems,
+        totalPages,
+        currentPage: page,
+        itemsPerPage: limit
+      }
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
