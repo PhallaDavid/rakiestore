@@ -1,25 +1,6 @@
 import express from 'express';
 import pool from '../db.js';
-import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
-
-// Ensure uploads directory exists natively
-const uploadDir = 'uploads/';
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir);
-}
-
-// Configure multer to define where to store the files and what name to give them
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    cb(null, Date.now() + path.extname(file.originalname)); // Uses current timestamp to prevent duplicate file names
-  }
-});
-const upload = multer({ storage: storage });
+import { upload } from '../config/cloudinary.js';
 
 const router = express.Router();
 
@@ -27,11 +8,7 @@ const router = express.Router();
 router.get('/', async (req, res) => {
   try {
     const [brands] = await pool.query('SELECT * FROM brands ORDER BY created_at DESC');
-    const brandsWithFullUrl = brands.map(brand => ({
-      ...brand,
-      avatar: brand.avatar ? `${req.protocol}://${req.get('host')}${brand.avatar}` : null
-    }));
-    res.json(brandsWithFullUrl);
+    res.json(brands);
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ message: 'Server Error' });
@@ -43,16 +20,14 @@ router.post('/', upload.single('avatar'), async (req, res) => {
   const { name, description } = req.body;
   if (!name) return res.status(400).json({ message: 'Brand name is required' });
 
-  // req.file contains the uploaded image automatically pulled from form-data
-  const avatarPath = req.file ? `/uploads/${req.file.filename}` : null;
+  const avatarUrl = req.file ? req.file.path : null;
 
   try {
     const [result] = await pool.query(
       'INSERT INTO brands (name, description, avatar) VALUES (?, ?, ?)',
-      [name, description || null, avatarPath]
+      [name, description || null, avatarUrl]
     );
-    const fullAvatarUrl = avatarPath ? `${req.protocol}://${req.get('host')}${avatarPath}` : null;
-    res.status(201).json({ message: 'Brand created successfully', brandId: result.insertId, avatar: fullAvatarUrl });
+    res.status(201).json({ message: 'Brand created successfully', brandId: result.insertId, avatar: avatarUrl });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ message: 'Server Error' });
@@ -68,10 +43,9 @@ router.put('/:id', upload.single('avatar'), async (req, res) => {
     let updateQuery = 'UPDATE brands SET name = COALESCE(?, name), description = COALESCE(?, description) ';
     let queryParams = [name !== undefined ? name : null, description !== undefined ? description : null];
 
-    // Check if the user uploaded a brand new avatar to replace the old one
     if (req.file) {
       updateQuery += ', avatar = ? ';
-      queryParams.push(`/uploads/${req.file.filename}`);
+      queryParams.push(req.file.path);
     }
 
     updateQuery += 'WHERE id = ?';

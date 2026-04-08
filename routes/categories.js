@@ -1,27 +1,8 @@
 import express from 'express';
 import pool from '../db.js';
-import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
-
-const uploadDir = 'uploads/';
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir);
-}
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname))
-});
-
-const upload = multer({ storage: storage });
+import { upload } from '../config/cloudinary.js';
 
 const router = express.Router();
-
-const getFullUrl = (req, relativePath) => {
-  if (!relativePath) return null;
-  return `${req.protocol}://${req.get('host')}${relativePath}`;
-};
 
 // --- CATEGORY CRUD ---
 
@@ -29,8 +10,7 @@ const getFullUrl = (req, relativePath) => {
 router.get('/', async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT * FROM categories ORDER BY created_at DESC');
-    const result = rows.map(item => ({ ...item, avatar: getFullUrl(req, item.avatar) }));
-    res.json(result);
+    res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -39,13 +19,13 @@ router.get('/', async (req, res) => {
 // Create Category
 router.post('/', upload.single('avatar'), async (req, res) => {
   const { name, description } = req.body;
-  const avatar = req.file ? `/uploads/${req.file.filename}` : null;
+  const avatar = req.file ? req.file.path : null;
   try {
     const [result] = await pool.query(
       'INSERT INTO categories (name, description, avatar) VALUES (?, ?, ?)',
       [name, description, avatar]
     );
-    res.status(201).json({ id: result.insertId, name, description, avatar: getFullUrl(req, avatar) });
+    res.status(201).json({ id: result.insertId, name, description, avatar });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -55,7 +35,7 @@ router.post('/', upload.single('avatar'), async (req, res) => {
 router.put('/:id', upload.single('avatar'), async (req, res) => {
   const { name, description } = req.body;
   const { id } = req.params;
-  const avatar = req.file ? `/uploads/${req.file.filename}` : undefined;
+  const avatar = req.file ? req.file.path : undefined;
 
   try {
     let query = 'UPDATE categories SET name = COALESCE(?, name), description = COALESCE(?, description)';
@@ -91,8 +71,7 @@ router.delete('/:id', async (req, res) => {
 router.get('/:categoryId/subcategories', async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT * FROM subcategories WHERE category_id = ?', [req.params.categoryId]);
-    const result = rows.map(item => ({ ...item, avatar: getFullUrl(req, item.avatar) }));
-    res.json(result);
+    res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -102,13 +81,13 @@ router.get('/:categoryId/subcategories', async (req, res) => {
 router.post('/:categoryId/subcategories', upload.single('avatar'), async (req, res) => {
   const { categoryId } = req.params;
   const { name, description } = req.body;
-  const avatar = req.file ? `/uploads/${req.file.filename}` : null;
+  const avatar = req.file ? req.file.path : null;
   try {
     const [result] = await pool.query(
       'INSERT INTO subcategories (category_id, name, description, avatar) VALUES (?, ?, ?, ?)',
       [categoryId, name, description, avatar]
     );
-    res.status(201).json({ id: result.insertId, category_id: categoryId, name, description, avatar: getFullUrl(req, avatar) });
+    res.status(201).json({ id: result.insertId, category_id: categoryId, name, description, avatar });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -118,7 +97,7 @@ router.post('/:categoryId/subcategories', upload.single('avatar'), async (req, r
 router.put('/subcategories/:id', upload.single('avatar'), async (req, res) => {
   const { name, description } = req.body;
   const { id } = req.params;
-  const avatar = req.file ? `/uploads/${req.file.filename}` : undefined;
+  const avatar = req.file ? req.file.path : undefined;
 
   try {
     let query = 'UPDATE subcategories SET name = COALESCE(?, name), description = COALESCE(?, description)';

@@ -1,27 +1,8 @@
 import express from 'express';
 import pool from '../db.js';
-import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
-
-const uploadDir = 'uploads/';
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir);
-}
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname))
-});
-
-const upload = multer({ storage: storage });
+import { upload } from '../config/cloudinary.js';
 
 const router = express.Router();
-
-const getFullUrl = (req, relativePath) => {
-  if (!relativePath) return null;
-  return `${req.protocol}://${req.get('host')}${relativePath}`;
-};
 
 const slugify = (text) => {
   return text
@@ -66,7 +47,7 @@ router.get('/search', async (req, res) => {
 
     const result = products.map(p => {
       const priceInfo = calculatePrice(p.original_price, p.promo_price, p.promo_start, p.promo_end);
-      return { ...p, thumbnail: getFullUrl(req, p.thumbnail), ...priceInfo };
+      return { ...p, thumbnail: p.thumbnail, ...priceInfo };
     });
 
     res.json(result);
@@ -96,10 +77,10 @@ router.get('/detail/:identifier', async (req, res) => {
 
     res.json({
       ...p,
-      thumbnail: getFullUrl(req, p.thumbnail),
+      thumbnail: p.thumbnail,
       ...priceInfo,
-      variants: variants.map(v => ({ ...v, variant_image: getFullUrl(req, v.variant_image) })),
-      gallery: gallery.map(img => ({ ...img, image_url: getFullUrl(req, img.image_url) }))
+      variants: variants.map(v => ({ ...v, variant_image: v.variant_image })),
+      gallery: gallery.map(img => ({ ...img, image_url: img.image_url }))
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -112,7 +93,7 @@ router.get('/', async (req, res) => {
     const [products] = await pool.query('SELECT * FROM products ORDER BY created_at DESC');
     const result = products.map(p => {
       const priceInfo = calculatePrice(p.original_price, p.promo_price, p.promo_start, p.promo_end);
-      return { ...p, thumbnail: getFullUrl(req, p.thumbnail), ...priceInfo };
+      return { ...p, thumbnail: p.thumbnail, ...priceInfo };
     });
     res.json(result);
   } catch (err) {
@@ -123,7 +104,7 @@ router.get('/', async (req, res) => {
 // Create product
 router.post('/', upload.single('thumbnail'), async (req, res) => {
   const { category_id, subcategory_id, brand_id, name, description, original_price, promo_price, promo_start, promo_end, status } = req.body;
-  const thumbnail = req.file ? `/uploads/${req.file.filename}` : null;
+  const thumbnail = req.file ? req.file.path : null;
   const slug = slugify(name) + '-' + Date.now().toString().slice(-4); // Ensure unique slug
 
   try {
@@ -142,7 +123,7 @@ router.post('/', upload.single('thumbnail'), async (req, res) => {
 router.put('/:id', upload.single('thumbnail'), async (req, res) => {
   const { id } = req.params;
   const body = req.body;
-  const thumbnail = req.file ? `/uploads/${req.file.filename}` : undefined;
+  const thumbnail = req.file ? req.file.path : undefined;
 
   try {
     let query = 'UPDATE products SET ';
@@ -188,20 +169,19 @@ router.delete('/:id', async (req, res) => {
 });
 
 /** --- OTHER CRUDs (VARIANTS, GALLERY) --- **/
-// (Rest of the previous content remains)
 
 // Get variants
 router.get('/:productId/variants', async (req, res) => {
   try {
     const [variants] = await pool.query('SELECT * FROM product_variants WHERE product_id = ?', [req.params.productId]);
-    res.json(variants.map(v => ({...v, variant_image: getFullUrl(req, v.variant_image)})));
+    res.json(variants.map(v => ({...v, variant_image: v.variant_image})));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 router.post('/:productId/variants', upload.single('variant_image'), async (req, res) => {
   const { productId } = req.params;
   const { color, size, sku, stock, original_price, promo_price, promo_start, promo_end } = req.body;
-  const img = req.file ? `/uploads/${req.file.filename}` : null;
+  const img = req.file ? req.file.path : null;
   try {
     await pool.query('INSERT INTO product_variants (product_id, color, size, sku, stock, original_price, promo_price, promo_start, promo_end, variant_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [productId, color, size, sku, stock, original_price, promo_price, promo_start, promo_end, img]);
     res.status(201).json({ message: 'Variant added' });
@@ -211,7 +191,7 @@ router.post('/:productId/variants', upload.single('variant_image'), async (req, 
 router.post('/:productId/gallery', upload.array('images', 5), async (req, res) => {
   const { productId } = req.params;
   try {
-    const promises = req.files.map(f => pool.query('INSERT INTO product_images (product_id, image_url) VALUES (?, ?)', [productId, `/uploads/${f.filename}`]));
+    const promises = req.files.map(f => pool.query('INSERT INTO product_images (product_id, image_url) VALUES (?, ?)', [productId, f.path]));
     await Promise.all(promises);
     res.status(201).json({ message: 'Gallery updated' });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -220,7 +200,7 @@ router.post('/:productId/gallery', upload.array('images', 5), async (req, res) =
 router.get('/:productId/gallery', async (req, res) => {
   try {
     const [ims] = await pool.query('SELECT * FROM product_images WHERE product_id = ?', [req.params.productId]);
-    res.json(ims.map(i => ({...i, image_url: getFullUrl(req, i.image_url)})));
+    res.json(ims.map(i => ({...i, image_url: i.image_url})));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

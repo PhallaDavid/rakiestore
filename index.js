@@ -16,9 +16,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Public static folder for uploaded image avatars
-app.use('/uploads', express.static('uploads'));
-
 // API routes
 app.use('/auth', authRoute);
 app.use('/brands', brandsRoute);

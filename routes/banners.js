@@ -1,33 +1,8 @@
 import express from 'express';
 import pool from '../db.js';
-import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
+import { upload } from '../config/cloudinary.js';
 
 const router = express.Router();
-
-const uploadDir = 'uploads/';
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir);
-}
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname))
-});
-
-const upload = multer({ storage });
-
-const getBaseUrl = (req) => {
-  const appUrl = process.env.APP_URL?.trim();
-  if (appUrl) return appUrl.replace(/\/$/, '');
-  return `${req.protocol}://${req.get('host')}`;
-};
-
-const getFullUrl = (req, relativePath) => {
-  if (!relativePath) return null;
-  return `${getBaseUrl(req)}${relativePath}`;
-};
 
 const normalizeStatus = (value) => {
   if (value === undefined) return undefined;
@@ -50,7 +25,7 @@ router.get('/', async (req, res) => {
     const params = status ? [status] : [];
 
     const [banners] = await pool.query(sql, params);
-    res.json(banners.map(b => ({ ...b, image: getFullUrl(req, b.image) })));
+    res.json(banners.map(b => ({ ...b, image: b.image })));
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ message: 'Server Error' });
@@ -63,7 +38,7 @@ router.get('/:id', async (req, res) => {
     const [rows] = await pool.query('SELECT * FROM banners WHERE id = ?', [req.params.id]);
     if (rows.length === 0) return res.status(404).json({ message: 'Banner not found' });
     const b = rows[0];
-    res.json({ ...b, image: getFullUrl(req, b.image) });
+    res.json({ ...b, image: b.image });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ message: 'Server Error' });
@@ -78,7 +53,7 @@ router.post('/', upload.single('image'), async (req, res) => {
   if (!title) return res.status(400).json({ message: 'Banner title is required' });
   if (status === null) return res.status(400).json({ message: "Invalid status. Use 'active' or 'inactive'." });
 
-  const imagePath = req.file ? `/uploads/${req.file.filename}` : null;
+  const imagePath = req.file ? req.file.path : null;
 
   try {
     const [result] = await pool.query(
@@ -89,7 +64,7 @@ router.post('/', upload.single('image'), async (req, res) => {
     res.status(201).json({
       message: 'Banner created successfully',
       bannerId: result.insertId,
-      image: getFullUrl(req, imagePath)
+      image: imagePath
     });
   } catch (err) {
     console.error(err.message);
@@ -118,7 +93,7 @@ router.put('/:id', upload.single('image'), async (req, res) => {
 
     if (req.file) {
       updateQuery += ', image = ?';
-      queryParams.push(`/uploads/${req.file.filename}`);
+      queryParams.push(req.file.path);
     }
 
     updateQuery += ' WHERE id = ?';
@@ -147,4 +122,3 @@ router.delete('/:id', async (req, res) => {
 });
 
 export default router;
-
