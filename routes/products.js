@@ -31,6 +31,72 @@ const calculatePrice = (original, promo, start, end) => {
   };
 };
 
+/** --- PRODUCT COLLECTIONS --- **/
+
+// Get New Collection (Products sorted by latest)
+router.get('/new-collection', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 12;
+    const offset = (page - 1) * limit;
+
+    const [countRows] = await pool.query('SELECT COUNT(*) as total FROM products');
+    const totalItems = countRows[0].total;
+    const totalPages = Math.ceil(totalItems / limit);
+
+    const [products] = await pool.query(
+      'SELECT * FROM products ORDER BY created_at DESC LIMIT ? OFFSET ?',
+      [limit, offset]
+    );
+
+    const result = products.map(p => {
+      const priceInfo = calculatePrice(p.original_price, p.promo_price, p.promo_start, p.promo_end);
+      return { ...p, ...priceInfo };
+    });
+
+    res.json({
+      data: result,
+      pagination: { totalItems, totalPages, currentPage: page, itemsPerPage: limit }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get Promotional Products (Currently active promotions)
+router.get('/promotions', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 12;
+    const offset = (page - 1) * limit;
+
+    const now = new Date();
+    const [countRows] = await pool.query(
+      'SELECT COUNT(*) as total FROM products WHERE promo_price IS NOT NULL AND promo_start <= ? AND promo_end >= ?',
+      [now, now]
+    );
+    const totalItems = countRows[0].total;
+    const totalPages = Math.ceil(totalItems / limit);
+
+    const [products] = await pool.query(
+      'SELECT * FROM products WHERE promo_price IS NOT NULL AND promo_start <= ? AND promo_end >= ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
+      [now, now, limit, offset]
+    );
+
+    const result = products.map(p => {
+      const priceInfo = calculatePrice(p.original_price, p.promo_price, p.promo_start, p.promo_end);
+      return { ...p, ...priceInfo };
+    });
+
+    res.json({
+      data: result,
+      pagination: { totalItems, totalPages, currentPage: page, itemsPerPage: limit }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /** --- PRODUCT CRUD --- **/
 
 // 1. Search products (by ID or Slug or Name)
