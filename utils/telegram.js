@@ -20,7 +20,6 @@ export const sendOrderToTelegram = async (orderDetails) => {
 
   // Khmer message
   let message = `ការបញ្ជាទិញថ្មី បានទទួល\n`;
-  message += `============================\n`;
   message += `លេខបញ្ជាទិញ: \`${orderId}\`\n\n`;
 
   // Customer Info
@@ -31,7 +30,6 @@ export const sendOrderToTelegram = async (orderDetails) => {
   if (note) message += `កំណត់សំគាល់: ${note}\n`;
 
   message += `\nមុខទំនិញ:\n`;
-  message += `============================\n`;
 
   // Items
   items.forEach((item, index) => {
@@ -43,7 +41,6 @@ export const sendOrderToTelegram = async (orderDetails) => {
   });
 
   // Total
-  message += `============================\n`;
   message += `តម្លៃសរុប: $${totalPrice.toFixed(2)}\n`;
   message += `============================`;
 
