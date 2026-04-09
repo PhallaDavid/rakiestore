@@ -18,34 +18,24 @@ export const sendOrderToTelegram = async (orderDetails) => {
 
   const { orderId, customerName, phone, address, items, totalPrice, note } = orderDetails;
 
-  // Khmer message
-  let message = `ការបញ្ជាទិញថ្មី បានទទួល\n`;
-  message += `លេខបញ្ជាទិញ: \`${orderId}\`\n\n`;
+  // Format message
+  let message = `🛍️ *NEW ORDER RECEIVED!* (#${orderId})\n\n`;
+  message += `👤 *Customer:* ${customerName || 'N/A'}\n`;
+  message += `📞 *Phone:* ${phone}\n`;
+  message += `📍 *Address:* ${address}\n`;
+  if (note) message += `📝 *Note:* ${note}\n`;
+  message += `\n📦 *Items:* \n`;
 
-  // Customer Info
-  message += `ព័ត៌មានអតិថិជន:\n`;
-  message += `ឈ្មោះ: ${customerName || 'N/A'}\n`;
-  message += `លេខទូរស័ព្ទ: ${phone}\n`;
-  message += `អាសយដ្ឋាន: ${address}\n`;
-  if (note) message += `កំណត់សំគាល់: ${note}\n`;
-
-  message += `\nមុខទំនិញ:\n`;
-
-  // Items
   items.forEach((item, index) => {
-    const subtotal = item.price * item.quantity;
-    message += `${index + 1}. ${item.name}\n`;
-    message += `   ចំនួន: ${item.quantity}\n`;
-    message += `   តម្លៃ: $${item.price}\n`;
-    message += `   សរុប: $${subtotal.toFixed(2)}\n\n`;
+    message += `${index + 1}. ${item.name} x${item.quantity} - $${item.price}\n`;
   });
 
-  // Total
-  message += `តម្លៃសរុប: $${totalPrice.toFixed(2)}\n`;
-  message += `============================`;
+  message += `\n💰 *Total Price:* $${totalPrice.toFixed(2)}`;
 
   try {
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`;
+    
+    // Get first item image if available
     const mainImage = items[0]?.thumbnail || '';
 
     if (mainImage) {
@@ -56,15 +46,16 @@ export const sendOrderToTelegram = async (orderDetails) => {
         parse_mode: 'Markdown'
       });
     } else {
+      // Send text only if no image
       await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
         chat_id: TELEGRAM_CHAT_ID,
         text: message,
         parse_mode: 'Markdown'
       });
     }
-
-    console.log('Order alert sent to Telegram');
+    
+    console.log('✅ Order alert sent to Telegram');
   } catch (error) {
-    console.error('Telegram Alert Error:', error.response?.data || error.message);
+    console.error('❌ Telegram Alert Error:', error.response?.data || error.message);
   }
 };
