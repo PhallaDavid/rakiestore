@@ -2,6 +2,7 @@ import express from 'express';
 import pool from '../db.js';
 import { verifyToken } from '../middleware/authMiddleware.js';
 import { sendNotificationToUser } from './notifications.js';
+import { sendOrderToTelegram } from '../utils/telegram.js';
 
 const router = express.Router();
 
@@ -33,6 +34,7 @@ router.post('/checkout', verifyToken, async (req, res) => {
     const [cartItems] = await connection.query(`
       SELECT 
         c.*, 
+        p.name, p.thumbnail,
         p.original_price as p_orig, p.promo_price as p_promo, p.promo_start as p_start, p.promo_end as p_end,
         v.original_price as v_orig, v.promo_price as v_promo, v.promo_start as v_start, v.promo_end as v_end
       FROM cart_items c
@@ -80,12 +82,28 @@ router.post('/checkout', verifyToken, async (req, res) => {
 
     await connection.commit();
     
-    // Trigger real-time notification
+    // Trigger real-time notification to user
     sendNotificationToUser(
       req.user.id, 
       'Order Placed! 🛍️', 
       `Your order #${orderId} has been placed successfully. Total: $${totalPrice.toFixed(2)}`
     );
+
+    // Trigger Telegram alert to admin
+    sendOrderToTelegram({
+      orderId,
+      customerName: req.user.name,
+      phone: phone || req.user.phone,
+      address,
+      items: cartItems.map(item => ({
+        name: item.name,
+        quantity: item.quantity,
+        price: calculatePrice(item.v_orig || item.p_orig, item.v_promo || item.p_promo, item.v_start || item.p_start, item.v_end || item.p_end),
+        thumbnail: item.thumbnail
+      })),
+      totalPrice,
+      note
+    });
 
     res.status(201).json({ message: 'Order placed successfully', order_id: orderId, total: totalPrice });
 
