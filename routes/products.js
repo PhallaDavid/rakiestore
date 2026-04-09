@@ -31,6 +31,7 @@ const calculatePrice = (original, promo, start, end) => {
   };
 };
 
+
 /** --- PRODUCT COLLECTIONS --- **/
 
 // Get New Collection (Products sorted by latest)
@@ -86,6 +87,100 @@ router.get('/promotions', async (req, res) => {
     const result = products.map(p => {
       const priceInfo = calculatePrice(p.original_price, p.promo_price, p.promo_start, p.promo_end);
       return { ...p, ...priceInfo };
+    });
+
+    res.json({
+      data: result,
+      pagination: { totalItems, totalPages, currentPage: page, itemsPerPage: limit }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get Products by Brand
+router.get('/brand/:brandId', async (req, res) => {
+  const { brandId } = req.params;
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 12;
+    const offset = (page - 1) * limit;
+
+    const [countRows] = await pool.query('SELECT COUNT(*) as total FROM products WHERE brand_id = ?', [brandId]);
+    const totalItems = countRows[0].total;
+    const totalPages = Math.ceil(totalItems / limit);
+
+    const [products] = await pool.query(
+      'SELECT * FROM products WHERE brand_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
+      [brandId, limit, offset]
+    );
+
+    const result = products.map(p => {
+      const priceInfo = calculatePrice(p.original_price, p.promo_price, p.promo_start, p.promo_end);
+      return { ...p, thumbnail: p.thumbnail, ...priceInfo };
+    });
+
+    res.json({
+      data: result,
+      pagination: { totalItems, totalPages, currentPage: page, itemsPerPage: limit }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// Get Products by Category
+router.get('/category/:categoryId', async (req, res) => {
+  const { categoryId } = req.params;
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 12;
+    const offset = (page - 1) * limit;
+
+    const [countRows] = await pool.query('SELECT COUNT(*) as total FROM products WHERE category_id = ?', [categoryId]);
+    const totalItems = countRows[0].total;
+    const totalPages = Math.ceil(totalItems / limit);
+
+    const [products] = await pool.query(
+      'SELECT * FROM products WHERE category_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
+      [categoryId, limit, offset]
+    );
+
+    const result = products.map(p => {
+      const priceInfo = calculatePrice(p.original_price, p.promo_price, p.promo_start, p.promo_end);
+      return { ...p, thumbnail: p.thumbnail, ...priceInfo };
+    });
+
+    res.json({
+      data: result,
+      pagination: { totalItems, totalPages, currentPage: page, itemsPerPage: limit }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get Products by Subcategory
+router.get('/subcategory/:subcategoryId', async (req, res) => {
+  const { subcategoryId } = req.params;
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 12;
+    const offset = (page - 1) * limit;
+
+    const [countRows] = await pool.query('SELECT COUNT(*) as total FROM products WHERE subcategory_id = ?', [subcategoryId]);
+    const totalItems = countRows[0].total;
+    const totalPages = Math.ceil(totalItems / limit);
+
+    const [products] = await pool.query(
+      'SELECT * FROM products WHERE subcategory_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
+      [subcategoryId, limit, offset]
+    );
+
+    const result = products.map(p => {
+      const priceInfo = calculatePrice(p.original_price, p.promo_price, p.promo_start, p.promo_end);
+      return { ...p, thumbnail: p.thumbnail, ...priceInfo };
     });
 
     res.json({
