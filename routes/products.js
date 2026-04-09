@@ -248,21 +248,29 @@ router.get('/detail/:identifier', async (req, res) => {
   }
 });
 
-// Get all products with pagination
+
+// Get all products with pagination and sorting
 router.get('/', async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 12;
     const offset = (page - 1) * limit;
+    const sort = req.query.sort || 'new';
 
     // Get total count
     const [countRows] = await pool.query('SELECT COUNT(*) as total FROM products');
     const totalItems = countRows[0].total;
     const totalPages = Math.ceil(totalItems / limit);
 
+    // Build sort query
+    let orderBy = 'ORDER BY created_at DESC';
+    if (sort === 'old') orderBy = 'ORDER BY created_at ASC';
+    if (sort === 'price-low') orderBy = 'ORDER BY original_price ASC';
+    if (sort === 'price-high') orderBy = 'ORDER BY original_price DESC';
+
     // Get paginated data
     const [products] = await pool.query(
-      'SELECT * FROM products ORDER BY created_at DESC LIMIT ? OFFSET ?',
+      `SELECT * FROM products ${orderBy} LIMIT ? OFFSET ?`,
       [limit, offset]
     );
 
@@ -277,7 +285,8 @@ router.get('/', async (req, res) => {
         totalItems,
         totalPages,
         currentPage: page,
-        itemsPerPage: limit
+        itemsPerPage: limit,
+        sort
       }
     });
   } catch (err) {
