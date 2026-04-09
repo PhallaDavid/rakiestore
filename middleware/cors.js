@@ -1,5 +1,5 @@
 function parseOrigins(originsValue) {
-  if (!originsValue) return null; // allow all (no credentials)
+  if (!originsValue) return null;
   const origins = originsValue
     .split(',')
     .map((o) => o.trim())
@@ -23,7 +23,7 @@ export default function cors(options = {}) {
   const defaultAllowHeaders =
     options.headers ??
     process.env.CORS_HEADERS ??
-    'Content-Type, Authorization';
+    'Content-Type, Authorization, x-access-token';
   const exposeHeaders = options.exposeHeaders ?? process.env.CORS_EXPOSE_HEADERS;
   const maxAge = options.maxAge ?? process.env.CORS_MAX_AGE;
 
@@ -31,11 +31,18 @@ export default function cors(options = {}) {
     const requestOrigin = req.headers.origin;
 
     if (allowedOrigins === null) {
-      res.setHeader('Access-Control-Allow-Origin', '*');
+      // If no origins specified, allow all. 
+      // Mirror the current origin if present to support credentials/auth.
+      res.setHeader('Access-Control-Allow-Origin', requestOrigin || '*');
     } else if (requestOrigin && allowedOrigins.has(requestOrigin)) {
       res.setHeader('Access-Control-Allow-Origin', requestOrigin);
       res.setHeader('Vary', 'Origin');
-      if (allowCredentials) res.setHeader('Access-Control-Allow-Credentials', 'true');
+    } else if (!requestOrigin && allowedOrigins === null) {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+
+    if (requestOrigin && allowCredentials) {
+       res.setHeader('Access-Control-Allow-Credentials', 'true');
     }
 
     res.setHeader('Access-Control-Allow-Methods', allowMethods);
