@@ -61,13 +61,20 @@ router.post('/test-send', verifyToken, async (req, res) => {
 
 // Helper function to send notification to a user
 export const sendNotificationToUser = async (user_id, title, body, data = {}) => {
-  if (!messaging) return;
+  if (!messaging) {
+    console.error('❌ Notification Error: Firebase Messaging not initialized. Check config/serviceAccountKey.json');
+    return;
+  }
 
   try {
     const [tokens] = await pool.query('SELECT fcm_token FROM user_fcm_tokens WHERE user_id = ?', [user_id]);
     
-    if (tokens.length === 0) return;
+    if (tokens.length === 0) {
+      console.warn(`⚠️ Notification Warning: No FCM tokens found for user_id: ${user_id}`);
+      return;
+    }
 
+    console.log(`📡 Sending notification to user ${user_id} (${tokens.length} tokens)...`);
     const registrationTokens = tokens.map(t => t.fcm_token);
 
     const message = {
