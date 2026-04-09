@@ -3,6 +3,9 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool from '../db.js';
 import { verifyToken } from '../middleware/authMiddleware.js';
+import { OAuth2Client } from 'google-auth-library';
+
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const router = express.Router();
 
@@ -52,6 +55,62 @@ router.post('/login', async (req, res) => {
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// 2.1 Google Login
+router.post('/google-login', async (req, res) => {
+  const { idToken } = req.body;
+  if (!idToken) return res.status(400).json({ message: 'Google ID Token is required' });
+
+  try {
+    const ticket = await client.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    const { sub: google_id, email, name, picture: avatar } = payload;
+
+    // Check if user exists by google_id or email
+    let [users] = await pool.query('SELECT * FROM users WHERE google_id = ? OR email = ?', [google_id, email]);
+    
+    let user;
+    if (users.length === 0) {
+      // Create new user
+      const [result] = await pool.query(
+        'INSERT INTO users (name, email, google_id, avatar) VALUES (?, ?, ?, ?)',
+        [name, email, google_id, avatar]
+      );
+      const [newUserData] = await pool.query('SELECT * FROM users WHERE id = ?', [result.insertId]);
+      user = newUserData[0];
+    } else {
+      user = users[0];
+      // Update google_id if it was null (found by email)
+      if (!user.google_id) {
+        await pool.query('UPDATE users SET google_id = ? WHERE id = ?', [google_id, user.id]);
+        user.google_id = google_id;
+      }
+    }
+
+    const jwtPayload = { id: user.id, email: user.email, name: user.name };
+    const secret = process.env.JWT_SECRET || 'your_secret_key';
+    
+    jwt.sign(jwtPayload, secret, { expiresIn: '7d' }, (err, token) => {
+      if (err) throw err;
+      res.json({ 
+        token, 
+        user: { 
+          id: user.id, 
+          name: user.name, 
+          email: user.email, 
+          phone: user.phone,
+          avatar: user.avatar 
+        } 
+      });
+    });
+  } catch (err) {
+    console.error('Google Auth Error:', err);
+    res.status(401).json({ message: 'Invalid Google Token' });
   }
 });
 
