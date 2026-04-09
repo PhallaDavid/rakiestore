@@ -44,6 +44,21 @@ router.post('/token/remove', verifyToken, async (req, res) => {
   }
 });
 
+// Test notification route
+router.post('/test-send', verifyToken, async (req, res) => {
+  try {
+    await sendNotificationToUser(
+      req.user.id,
+      'Test Notification 🚀',
+      'This is a test notification from RakieStore! If you see this, FCM is working.'
+    );
+    res.status(200).json({ message: 'Test notification sent' });
+  } catch (error) {
+    console.error('Error sending test notification:', error);
+    res.status(500).json({ message: 'Error sending notification' });
+  }
+});
+
 // Helper function to send notification to a user
 export const sendNotificationToUser = async (user_id, title, body, data = {}) => {
   if (!messaging) return;
