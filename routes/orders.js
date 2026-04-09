@@ -1,6 +1,7 @@
 import express from 'express';
 import pool from '../db.js';
 import { verifyToken } from '../middleware/authMiddleware.js';
+import { sendNotificationToUser } from './notifications.js';
 
 const router = express.Router();
 
@@ -78,6 +79,14 @@ router.post('/checkout', verifyToken, async (req, res) => {
     await connection.query('DELETE FROM cart_items WHERE user_id = ?', [req.user.id]);
 
     await connection.commit();
+    
+    // Trigger real-time notification
+    sendNotificationToUser(
+      req.user.id, 
+      'Order Placed! 🛍️', 
+      `Your order #${orderId} has been placed successfully. Total: $${totalPrice.toFixed(2)}`
+    );
+
     res.status(201).json({ message: 'Order placed successfully', order_id: orderId, total: totalPrice });
 
   } catch (err) {
