@@ -220,11 +220,28 @@ router.post('/:id/pay-aba', async (req, res) => {
       hash,
     };
 
-    // Return the URL and payload so the frontend can submit the form
-    res.json({
-      aba_url: baseUrl,
-      payload
-    });
+    // 4. Call ABA API directly to get QR code / Deeplink
+    const formData = new URLSearchParams();
+    for (const key in payload) {
+      formData.append(key, payload[key]);
+    }
+
+    try {
+      const response = await axios.post(baseUrl, formData, {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      });
+
+      // Return the ABA response directly (contains qrString, qrImage, abapay_deeplink)
+      res.json(response.data);
+    } catch (apiErr) {
+      console.error('ABA API Call Error:', apiErr.response?.data || apiErr.message);
+      res.status(500).json({ 
+        message: 'Failed to communicate with ABA PayWay', 
+        error: apiErr.response?.data || apiErr.message 
+      });
+    }
 
   } catch (err) {
     console.error('ABA Payment Error:', err.message);
