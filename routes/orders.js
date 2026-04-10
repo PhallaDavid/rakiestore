@@ -193,21 +193,21 @@ router.post('/:id/pay-aba', async (req, res) => {
       amount: Number(order.total_price).toFixed(2),
       items: itemsBase64,
       shipping: '0.00',
-      firstname: '', // Optional
-      lastname: '',  // Optional
-      email: '',     // Optional
+      firstname: '', 
+      lastname: '',  
+      email: '',     
       phone: order.phone || '',
       type: 'purchase',
-      payment_option: req.body.payment_option || '', // Allow choosing like 'abapay_khqr_deeplink'
+      payment_option: (req.body && req.body.payment_option) || 'abapay', 
       currency: 'USD',
       return_url: Buffer.from(`${process.env.CLIENT_URL || 'http://localhost:3000'}/payment-success`).toString('base64'),
       cancel_url: Buffer.from(`${process.env.CLIENT_URL || 'http://localhost:3000'}/payment-cancel`).toString('base64'),
       continue_success_url: Buffer.from(`${process.env.CLIENT_URL || 'http://localhost:3000'}/orders/${order.id}`).toString('base64'),
-      return_deeplink: '', // Optional for web
-      custom_fields: '',   // Optional
-      return_params: '',   // Optional
-      payout: '',          // Optional
-      lifetime: 30,        // Optional (minutes)
+      return_deeplink: '', 
+      custom_fields: '',   
+      return_params: '',   
+      payout: '',          
+      lifetime: 30,        
       additional_params: '',
       google_pay_token: '',
       skip_success_page: 0
@@ -220,28 +220,11 @@ router.post('/:id/pay-aba', async (req, res) => {
       hash,
     };
 
-    // 4. Call ABA API directly
-    // Using multipart/form-data as per documentation
-    const formData = new URLSearchParams();
-    for (const key in payload) {
-      formData.append(key, payload[key]);
-    }
-
-    try {
-      const response = await axios.post(baseUrl, formData, {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded' // URLSearchParams handles this well
-        }
-      });
-
-      res.json(response.data);
-    } catch (apiErr) {
-      console.error('ABA API Call Error:', apiErr.response?.data || apiErr.message);
-      res.status(500).json({ 
-        message: 'Failed to communicate with ABA PayWay', 
-        error: apiErr.response?.data || apiErr.message 
-      });
-    }
+    // Return the URL and payload so the frontend can submit the form
+    res.json({
+      aba_url: baseUrl,
+      payload
+    });
 
   } catch (err) {
     console.error('ABA Payment Error:', err.message);
