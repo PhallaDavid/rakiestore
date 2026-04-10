@@ -4,19 +4,81 @@ import jwt from 'jsonwebtoken';
 import pool from '../db.js';
 import { verifyToken } from '../middleware/authMiddleware.js';
 import { OAuth2Client } from 'google-auth-library';
+import { sendOTP } from '../utils/plasgate.js';
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const router = express.Router();
 
-// 1. Register with Phone and Name
+// 0. Send OTP
+router.post('/send-otp', async (req, res) => {
+  const { phone } = req.body;
+  if (!phone) return res.status(400).json({ message: 'Phone number is required' });
+
+  try {
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes expiry
+
+    // Save to DB
+    await pool.query(
+      'INSERT INTO otps (phone, otp, expires_at) VALUES (?, ?, ?)',
+      [phone, otp, expiresAt]
+    );
+
+    // Send via Plasgate
+    await sendOTP(phone, otp);
+
+    res.json({ message: 'OTP sent successfully' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ message: 'Error sending OTP' });
+  }
+});
+
+// 0.1 Verify OTP
+router.post('/verify-otp', async (req, res) => {
+  const { phone, otp } = req.body;
+  if (!phone || !otp) return res.status(400).json({ message: 'Phone and OTP are required' });
+
+  try {
+    const [rows] = await pool.query(
+      'SELECT * FROM otps WHERE phone = ? AND otp = ? AND is_verified = FALSE AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
+      [phone, otp]
+    );
+
+    if (rows.length === 0) {
+      return res.status(400).json({ message: 'Invalid or expired OTP' });
+    }
+
+    const otpId = rows[0].id;
+    await pool.query('UPDATE otps SET is_verified = TRUE WHERE id = ?', [otpId]);
+
+    res.json({ message: 'OTP verified successfully' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ message: 'Error verifying OTP' });
+  }
+});
+
+// 1. Register with Phone, Name and Verified OTP
 router.post('/register', async (req, res) => {
-  const { phone, password, name } = req.body;
-  if (!phone || !password || !name) {
-    return res.status(400).json({ message: 'Name, phone, and password are required' });
+  const { phone, password, name, otp } = req.body;
+  if (!phone || !password || !name || !otp) {
+    return res.status(400).json({ message: 'Name, phone, password, and OTP are required' });
   }
 
   try {
+    // Check if OTP was verified for this phone
+    const [otpCheck] = await pool.query(
+      'SELECT * FROM otps WHERE phone = ? AND otp = ? AND is_verified = TRUE ORDER BY created_at DESC LIMIT 1',
+      [phone, otp]
+    );
+
+    if (otpCheck.length === 0) {
+      return res.status(400).json({ message: 'OTP not verified or invalid' });
+    }
+
     const [existingUsers] = await pool.query('SELECT * FROM users WHERE phone = ?', [phone]);
     if (existingUsers.length > 0) return res.status(400).json({ message: 'Phone number already registered' });
 
@@ -24,6 +86,9 @@ router.post('/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, salt);
 
     await pool.query('INSERT INTO users (name, phone, password) VALUES (?, ?, ?)', [name, phone, hashedPassword]);
+
+    // Clean up OTP after successful registration
+    await pool.query('DELETE FROM otps WHERE phone = ?', [phone]);
 
     res.status(201).json({ message: 'User registered successfully' });
   } catch (err) {

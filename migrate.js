@@ -186,6 +186,18 @@ async function migrate() {
       )
     `;
     await pool.query(createPostersTableQuery);
+
+    const createOtpsTableQuery = `
+      CREATE TABLE IF NOT EXISTS otps (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        phone VARCHAR(100) NOT NULL,
+        otp VARCHAR(10) NOT NULL,
+        is_verified BOOLEAN DEFAULT FALSE,
+        expires_at TIMESTAMP NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+    await pool.query(createOtpsTableQuery);
     
     console.log('✅ Success: All tables migrated successfully!');
   } catch (error) {
