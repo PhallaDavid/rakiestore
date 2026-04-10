@@ -242,15 +242,55 @@ router.post('/change-password', verifyToken, async (req, res) => {
   }
 });
 
-// 5. Forgot Password (Mocked without SMS)
-router.post('/forgot-password', async (req, res) => {
-  const { phone, newPassword } = req.body;
-  
-  // NOTE: In a real app, you would send an SMS OTP here. 
-  // For this API, we will just allow resetting it directly using the phone number.
-  if (!phone || !newPassword) return res.status(400).json({ message: 'Phone and new password are required' });
+// 5. Forgot Password - Step 1: Send OTP
+router.post('/forgot-password-send-otp', async (req, res) => {
+  const { phone } = req.body;
+  if (!phone) return res.status(400).json({ message: 'Phone number is required' });
 
   try {
+    // Check if user exists
+    const [users] = await pool.query('SELECT * FROM users WHERE phone = ?', [phone]);
+    if (users.length === 0) return res.status(404).json({ message: 'User with this phone number not found' });
+
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes expiry
+
+    // Save to DB
+    await pool.query(
+      'INSERT INTO otps (phone, otp, expires_at) VALUES (?, ?, ?)',
+      [phone, otp, expiresAt]
+    );
+
+    // Send via Plasgate
+    await sendOTP(phone, otp);
+
+    res.json({ message: 'OTP sent successfully' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ message: 'Error sending OTP' });
+  }
+});
+
+// 5.1 Forgot Password - Step 2: Verify OTP and Reset
+router.post('/forgot-password', async (req, res) => {
+  const { phone, otp, newPassword } = req.body;
+  
+  if (!phone || !otp || !newPassword) {
+    return res.status(400).json({ message: 'Phone, OTP, and new password are required' });
+  }
+
+  try {
+    // Check if OTP was verified for this phone
+    const [otpCheck] = await pool.query(
+      'SELECT * FROM otps WHERE phone = ? AND otp = ? AND is_verified = TRUE ORDER BY created_at DESC LIMIT 1',
+      [phone, otp]
+    );
+
+    if (otpCheck.length === 0) {
+      return res.status(400).json({ message: 'OTP not verified or invalid' });
+    }
+
     const [users] = await pool.query('SELECT * FROM users WHERE phone = ?', [phone]);
     if (users.length === 0) return res.status(404).json({ message: 'User with this phone number not found' });
 
@@ -258,6 +298,10 @@ router.post('/forgot-password', async (req, res) => {
     const hashedNewPassword = await bcrypt.hash(newPassword, salt);
 
     await pool.query('UPDATE users SET password = ? WHERE phone = ?', [hashedNewPassword, phone]);
+
+    // Clean up OTP after successful reset
+    await pool.query('DELETE FROM otps WHERE phone = ?', [phone]);
+
     res.json({ message: 'Password reset successfully. You can now login with your new password.' });
   } catch (err) {
     console.error(err.message);
