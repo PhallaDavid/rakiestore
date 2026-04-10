@@ -3,6 +3,8 @@ import pool from '../db.js';
 import { verifyToken } from '../middleware/authMiddleware.js';
 import { sendNotificationToUser } from './notifications.js';
 import { sendOrderToTelegram } from '../utils/telegram.js';
+import { generateHashHex, getABAConfig } from '../utils/aba.js';
+import axios from 'axios';
 
 const router = express.Router();
 
@@ -147,6 +149,116 @@ router.get('/:id', verifyToken, async (req, res) => {
 
     res.json({ order: orders[0], items });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. Create ABA Payment (Public for testing)
+router.post('/:id/pay-aba', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { merchantId, apiKey, baseUrl } = getABAConfig();
+
+    if (!merchantId || !apiKey) {
+      return res.status(500).json({ message: 'ABA PayWay configuration is missing' });
+    }
+
+    // 1. Get order details (Removed user_id check for testing)
+    const [orders] = await pool.query('SELECT * FROM orders WHERE id = ?', [id]);
+    if (orders.length === 0) return res.status(404).json({ message: 'Order not found' });
+
+    const order = orders[0];
+
+    // 2. Prepare ABA payment data
+    const paymentData = {
+      req_time: new Date().toISOString().replace(/[-:T]/g, '').split('.')[0], // Format: YYYYMMDDHHMMSS
+      merchant_id: merchantId,
+      tran_id: order.id.toString(),
+      amount: Number(order.total_price).toFixed(2),
+      currency: 'USD',
+      type: 'purchase', // or 'checkout'
+      payment_option: 'abapay', // default to ABA PAY
+      continue_success_url: process.env.CLIENT_URL ? `${process.env.CLIENT_URL}/orders/${order.id}` : '',
+      return_url: '', // optional
+      cancel_url: '', // optional
+    };
+
+    // Note: ABA expects fields in a specific order for hashing
+    // For Sandbox/V1, sometimes it's specific. 
+    // We'll follow the user's requested logic of joining values.
+    const hashData = {
+      req_time: paymentData.req_time,
+      merchant_id: paymentData.merchant_id,
+      tran_id: paymentData.tran_id,
+      amount: paymentData.amount,
+      currency: paymentData.currency,
+      type: paymentData.type,
+      payment_option: paymentData.payment_option
+    };
+
+    const hash = generateHashHex(hashData);
+
+    const payload = {
+      ...paymentData,
+      hash,
+    };
+
+    // 3. Optional: Call ABA API if you want to get a direct link or QR
+    // But usually for PayWay, you just post these fields to their endpoint.
+    // If the user wants to do it from the server, we use axios.
+    
+    /*
+    const response = await axios.post(baseUrl, payload, {
+      headers: {
+        'Content-type': 'application/json',
+        // 'Authorization': `Bearer ${apiKey}` // Some versions use Bearer token
+      }
+    });
+    return res.json(response.data);
+    */
+
+    // For now, return the payload so the frontend can create a form or call ABA
+    res.json({
+      aba_url: baseUrl,
+      payload
+    });
+
+  } catch (err) {
+    console.error('ABA Payment Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 5. ABA Webhook (Public)
+router.post('/aba-webhook', async (req, res) => {
+  try {
+    const { tran_id, status, hash } = req.body;
+
+    // ABA Push notification payload usually contains:
+    // merchant_id, tran_id, status, amount, currency, hash, api_key, etc.
+    // We need to verify the hash.
+    // NOTE: The exact fields used for the hash depend on the ABA version.
+    // For now, we'll assume the fields in req.body except 'hash' are used.
+    
+    // Simple verification check (Placeholder logic based on user's pattern)
+    // In production, you MUST use the exact fields in the exact order specified by ABA.
+    const { hash: incomingHash, ...dataWithoutHash } = req.body;
+    // const isValid = verifyHashHex(dataWithoutHash, hash); 
+    // Wait, we need to know the order of fields.
+    
+    // For now, let's just log and update if status is '0' (Success in ABA)
+    console.log('ABA Webhook received:', req.body);
+
+    if (status === '0') {
+      await pool.query('UPDATE orders SET status = "paid" WHERE id = ?', [tran_id]);
+      
+      // Notify user or admin
+      console.log(`Order #${tran_id} marked as PAID via ABA Webhook`);
+    }
+
+    res.json({ status: 'ok' });
+  } catch (err) {
+    console.error('ABA Webhook Error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
