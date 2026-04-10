@@ -169,60 +169,79 @@ router.post('/:id/pay-aba', async (req, res) => {
 
     const order = orders[0];
 
-    // 2. Prepare ABA payment data
+    // 2. Prepare items for ABA (Base64 encoded JSON array)
+    const [orderItems] = await pool.query(`
+      SELECT oi.*, p.name 
+      FROM order_items oi 
+      JOIN products p ON oi.product_id = p.id 
+      WHERE oi.order_id = ?
+    `, [order.id]);
+
+    const itemsArray = orderItems.map(item => ({
+      name: item.name,
+      quantity: item.quantity,
+      price: Number(item.price_at_purchase).toFixed(2)
+    }));
+
+    const itemsBase64 = Buffer.from(JSON.stringify(itemsArray)).toString('base64');
+
+    // 3. Prepare ABA payment data
     const paymentData = {
-      req_time: new Date().toISOString().replace(/[-:T]/g, '').split('.')[0],
+      req_time: new Date().toISOString().replace(/[-:T]/g, '').split('.')[0], 
       merchant_id: merchantId,
       tran_id: order.id.toString(),
       amount: Number(order.total_price).toFixed(2),
-      currency: 'USD',
+      items: itemsBase64,
+      shipping: '0.00',
+      firstname: '', // Optional
+      lastname: '',  // Optional
+      email: '',     // Optional
+      phone: order.phone || '',
       type: 'purchase',
-      payment_option: 'abapay', // default
-      continue_success_url: process.env.CLIENT_URL ? `${process.env.CLIENT_URL}/orders/${order.id}` : '',
-      return_url: '',
-      cancel_url: '',
+      payment_option: req.body.payment_option || '', // Allow choosing like 'abapay_khqr_deeplink'
+      currency: 'USD',
+      return_url: Buffer.from(`${process.env.CLIENT_URL || 'http://localhost:3000'}/payment-success`).toString('base64'),
+      cancel_url: Buffer.from(`${process.env.CLIENT_URL || 'http://localhost:3000'}/payment-cancel`).toString('base64'),
+      continue_success_url: Buffer.from(`${process.env.CLIENT_URL || 'http://localhost:3000'}/orders/${order.id}`).toString('base64'),
+      return_deeplink: '', // Optional for web
+      custom_fields: '',   // Optional
+      return_params: '',   // Optional
+      payout: '',          // Optional
+      lifetime: 30,        // Optional (minutes)
+      additional_params: '',
+      google_pay_token: '',
+      skip_success_page: 0
     };
 
-    // Construct raw string in the exact order ABA expects for the hash
-    // Order: req_time + merchant_id + tran_id + amount + currency + type + payment_option + continue_success_url + return_url + cancel_url
-    const rawString = 
-      paymentData.req_time + 
-      paymentData.merchant_id + 
-      paymentData.tran_id + 
-      paymentData.amount + 
-      paymentData.currency + 
-      paymentData.type + 
-      paymentData.payment_option + 
-      paymentData.continue_success_url + 
-      paymentData.return_url + 
-      paymentData.cancel_url;
-
-    const hash = generateHash(rawString);
+    const hash = generateHash(paymentData);
 
     const payload = {
       ...paymentData,
       hash,
     };
 
-    // 3. Optional: Call ABA API if you want to get a direct link or QR
-    // But usually for PayWay, you just post these fields to their endpoint.
-    // If the user wants to do it from the server, we use axios.
-    
-    /*
-    const response = await axios.post(baseUrl, payload, {
-      headers: {
-        'Content-type': 'application/json',
-        // 'Authorization': `Bearer ${apiKey}` // Some versions use Bearer token
-      }
-    });
-    return res.json(response.data);
-    */
+    // 4. Call ABA API directly
+    // Using multipart/form-data as per documentation
+    const formData = new URLSearchParams();
+    for (const key in payload) {
+      formData.append(key, payload[key]);
+    }
 
-    // For now, return the payload so the frontend can create a form or call ABA
-    res.json({
-      aba_url: baseUrl,
-      payload
-    });
+    try {
+      const response = await axios.post(baseUrl, formData, {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded' // URLSearchParams handles this well
+        }
+      });
+
+      res.json(response.data);
+    } catch (apiErr) {
+      console.error('ABA API Call Error:', apiErr.response?.data || apiErr.message);
+      res.status(500).json({ 
+        message: 'Failed to communicate with ABA PayWay', 
+        error: apiErr.response?.data || apiErr.message 
+      });
+    }
 
   } catch (err) {
     console.error('ABA Payment Error:', err.message);
