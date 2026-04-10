@@ -3,7 +3,7 @@ import pool from '../db.js';
 import { verifyToken } from '../middleware/authMiddleware.js';
 import { sendNotificationToUser } from './notifications.js';
 import { sendOrderToTelegram } from '../utils/telegram.js';
-import { generateHashHex, getABAConfig } from '../utils/aba.js';
+import { generateHash, getABAConfig } from '../utils/aba.js';
 import axios from 'axios';
 
 const router = express.Router();
@@ -171,32 +171,33 @@ router.post('/:id/pay-aba', async (req, res) => {
 
     // 2. Prepare ABA payment data
     const paymentData = {
-      req_time: new Date().toISOString().replace(/[-:T]/g, '').split('.')[0], // Format: YYYYMMDDHHMMSS
+      req_time: new Date().toISOString().replace(/[-:T]/g, '').split('.')[0],
       merchant_id: merchantId,
       tran_id: order.id.toString(),
       amount: Number(order.total_price).toFixed(2),
       currency: 'USD',
-      type: 'purchase', // or 'checkout'
-      payment_option: 'abapay', // default to ABA PAY
+      type: 'purchase',
+      payment_option: 'abapay', // default
       continue_success_url: process.env.CLIENT_URL ? `${process.env.CLIENT_URL}/orders/${order.id}` : '',
-      return_url: '', // optional
-      cancel_url: '', // optional
+      return_url: '',
+      cancel_url: '',
     };
 
-    // Note: ABA expects fields in a specific order for hashing
-    // For Sandbox/V1, sometimes it's specific. 
-    // We'll follow the user's requested logic of joining values.
-    const hashData = {
-      req_time: paymentData.req_time,
-      merchant_id: paymentData.merchant_id,
-      tran_id: paymentData.tran_id,
-      amount: paymentData.amount,
-      currency: paymentData.currency,
-      type: paymentData.type,
-      payment_option: paymentData.payment_option
-    };
+    // Construct raw string in the exact order ABA expects for the hash
+    // Order: req_time + merchant_id + tran_id + amount + currency + type + payment_option + continue_success_url + return_url + cancel_url
+    const rawString = 
+      paymentData.req_time + 
+      paymentData.merchant_id + 
+      paymentData.tran_id + 
+      paymentData.amount + 
+      paymentData.currency + 
+      paymentData.type + 
+      paymentData.payment_option + 
+      paymentData.continue_success_url + 
+      paymentData.return_url + 
+      paymentData.cancel_url;
 
-    const hash = generateHashHex(hashData);
+    const hash = generateHash(rawString);
 
     const payload = {
       ...paymentData,
