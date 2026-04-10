@@ -40,7 +40,7 @@ export const generateHashHex = (data) => {
   return crypto
     .createHmac('sha512', ABA_CONFIG.hashKey)
     .update(raw)
-    .digest('hex');
+    .digest('base64');
 };
 
 export const verifyHashHex = (data, receivedHash) => {
